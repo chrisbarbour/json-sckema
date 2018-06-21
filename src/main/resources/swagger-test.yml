@@ -1,0 +1,35 @@
+swagger: "2.0"
+info:
+  version: "0.0.1"
+  title: Example
+host: localhost
+basePath: /
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /example:
+    post:
+      description: Example
+      parameters:
+        - in: body
+          name: example
+          description: An Example
+          schema:
+            $ref: "#/definitions/Example"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/Example"
+
+definitions:
+  Example:
+    type: object
+    description: "An Example"
+    properties:
+      abc: { type: string, maxLength: 5}
+      required: ["abc"]
