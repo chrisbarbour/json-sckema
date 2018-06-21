@@ -1,6 +1,7 @@
 package sckema
 
 import com.squareup.kotlinpoet.*
+import java.math.BigDecimal
 
 
 object ValidationSpec{
@@ -18,6 +19,8 @@ object ValidationSpec{
                     val required = requiredList.contains(it.first)
                     when(it.second.type?.types?.first()){
                         "string" -> stringValidation(it.first, required, it.second)
+                        "number" -> numberValidation(it.first, required, it.second)
+                        "integer" -> numberValidation(it.first, required, it.second)
                         else ->
                             if(it.second.`$ref` != null)
                                 listOf(CodeBlock.of("   ${it.first}${if(required) "" else "?"}.let{ it.validate(\"${it.first}\").asChildrenOf(name) }"))
@@ -48,12 +51,22 @@ object ValidationSpec{
         )
     }
 
+    private fun numberValidation(name: String, required: Boolean, schema: JsonSchema): List<CodeBlock>{
+        return listOfNotNull(
+                if(schema.minimum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it <= ${schema.minimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMin(${schema.minimum}))) else null }") else null,
+                if(schema.exclusiveMinimum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMinimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMin(${schema.exclusiveMinimum}))) else null }") else null,
+                if(schema.maximum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it >= ${schema.maximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMax(${schema.maximum}))) else null }") else null,
+                if(schema.exclusiveMaximum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMaximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMax(${schema.exclusiveMaximum}))) else null }") else null
+        )
+    }
+
     fun validationHelpers(`package`: String) = FileSpec.builder(`package`, "Validation")
             .addType(TypeSpec.interfaceBuilder("Validation").build())
             .addType(TypeSpec.classBuilder("Valid").addSuperinterface(ClassName(`package`,"Validation")).build())
             .addType(TypeSpec.enumBuilder("ValidationReason")
                     .addEnumConstant("STRING_LENGTH")
                     .addEnumConstant("STRING_PATTERN")
+                    .addEnumConstant("NUMBER_LIMIT")
                     .build())
             .addType(TypeSpec.classBuilder("ValidationError").addModifiers(KModifier.DATA)
                     .addProperty(PropertySpec.builder("property", String::class.asTypeName()).initializer(CodeBlock.of("property")).build())
@@ -70,6 +83,10 @@ object ValidationSpec{
                                     .addFunction(FunSpec.builder("messageForStringMax").addParameter("max", Int::class).returns(String::class).addCode("return \"Character length must be less than or equal to \$max\"\n").build())
                                     .addFunction(FunSpec.builder("messageForStringMin").addParameter("min", Int::class).returns(String::class).addCode("return \"Character length must be greater than or equal to \$min\"\n").build())
                                     .addFunction(FunSpec.builder("messageForStringPattern").addParameter("pattern", String::class).returns(String::class).addCode("return \"String must match pattern: \$pattern\"\n").build())
+                                    .addFunction(FunSpec.builder("messageForNumberMax").addParameter("max", BigDecimal::class).returns(String::class).addCode("return \"Number must be less than or equal to \$max\"\n").build())
+                                    .addFunction(FunSpec.builder("messageForNumberMin").addParameter("min", BigDecimal::class).returns(String::class).addCode("return \"Number must be greater than or equal to \$min\"\n").build())
+                                    .addFunction(FunSpec.builder("messageForNumberExclusiveMax").addParameter("max", BigDecimal::class).returns(String::class).addCode("return \"Number must be less than \$max\"\n").build())
+                                    .addFunction(FunSpec.builder("messageForNumberExclusiveMin").addParameter("min", BigDecimal::class).returns(String::class).addCode("return \"Number must be greater than \$min\"\n").build())
                                     .build()
                     )
                     .build()

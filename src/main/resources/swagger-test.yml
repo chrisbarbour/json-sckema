@@ -32,4 +32,5 @@ definitions:
     description: "An Example"
     properties:
       abc: { type: string, maxLength: 5}
-      required: ["abc"]
+      def: { type: number, exclusiveMaximum: 25 }
+    required: ["abc"]

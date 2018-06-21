@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import java.math.BigDecimal
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class JsonSchema(
@@ -23,6 +24,11 @@ data class JsonSchema(
         val required: List<String>? = null,
         val additionalItems: Boolean = true,
         val uniqueItems: Boolean? = null,
+        val multipleOf: BigDecimal? = null,
+        val maximum: BigDecimal? = null,
+        val exclusiveMaximum: BigDecimal? = null,
+        val minimum: BigDecimal? = null,
+        val exclusiveMinimum: BigDecimal? = null,
         private val `$comment`: String? = null,
         @JsonDeserialize(using = DefinitionsDeserializer::class) val definitions: JsonDefinitions? = null,
         @JsonDeserialize(using = DefinitionsDeserializer::class) val properties: JsonDefinitions? = null

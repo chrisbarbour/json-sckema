@@ -17,7 +17,7 @@ import kotlin.reflect.KClass
 // 2 - Format
 // 3... - Schema Resources
 fun main(args: Array<String>){
-    val actualArgs = if(args.isEmpty()) arrayOf("${System.getProperty("user.dir")}/sckema/target/generated-sources", "sckema","yaml", "swagger-test.yml") else args
+    val actualArgs = if(args.isEmpty()) arrayOf("${System.getProperty("user.dir")}/target/generated-sources", "sckema","yaml", "${System.getProperty("user.dir")}/src/main/resources/swagger-test.yml") else args
     actualArgs.map { println(it) }
     val location = actualArgs[0]
     File(location).mkdir()
