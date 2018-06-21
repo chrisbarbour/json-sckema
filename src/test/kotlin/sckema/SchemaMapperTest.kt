@@ -1,9 +1,102 @@
 
+import com.squareup.kotlinpoet.*
 import org.junit.Test
+import sckema.*
+import java.math.BigDecimal
+import kotlin.reflect.KClass
+import kotlin.test.expect
 
 class SchemaMapperTest{
     @Test
-    fun test(){
+    fun `should create simple type with one nullable field`(){
+        val schema = JsonSchema(definitions = JsonDefinitions(definitions = mapOf(
+                "A" to JsonSchema(
+                        type = JsonTypes(listOf("object")),
+                        properties = JsonDefinitions(definitions = mapOf(
+                                "B" to JsonSchema(type = JsonTypes(listOf("string")))
+                        ) )
+                ))
+        ))
+        val files = SchemaMapper.map("abc", schema, mutableListOf())
+        expect(1){ files.count() }
+        with(files[0]){
+            expect("abc"){ packageName }
+            expect("A"){ name }
+            expect(1){ members.count() }
+            with(members[0]){
+                expect(true){ this is TypeSpec }
+                with(this as TypeSpec){
+                    expect("A"){ name }
+                    expect(1){ propertySpecs.count() }
+                    with(this.primaryConstructor){
+                        with(this!!.parameters[0]){
+                            expect("B"){ name }
+                            expect(String::class.asTypeName().asNullable()){ type }
+                            expect("null"){ defaultValue.toString() }
+                        }
+                    }
+                    with(propertySpecs[0]){
+                        expect("B"){ name }
+                        expect(String::class.asTypeName().asNullable()){ type }
+                    }
+                }
+            }
+        }
+    }
 
+    fun simpleTypeTestFor(typeName: String, type: KClass<*>){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf(typeName)))
+        expect(type.asTypeName()){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
+        expect(type.asTypeName().asNullable()){ SchemaMapper.typeFrom("abc", "parent", schema, false, typePool) }
+        expect(true){ typePool.isEmpty() }
+    }
+
+    @Test
+    fun `should be String when string schema type`() = simpleTypeTestFor("string", String::class)
+    @Test
+    fun `should be BigDecimal when number schema type`() = simpleTypeTestFor("number", BigDecimal::class)
+    @Test
+    fun `should be Integer when integer schema type`() = simpleTypeTestFor("integer", Int::class)
+    @Test
+    fun `should be Boolean when boolean schema type`() = simpleTypeTestFor("boolean", Boolean::class)
+    @Test
+    fun `should be Item when ref schema`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(`$ref` = "#/definitions/Item")
+        expect(ClassName("abc", "Item")){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
+        expect(ClassName("abc", "Item").asNullable()){ SchemaMapper.typeFrom("abc", "parent", schema, false, typePool) }
+        expect(true){ typePool.isEmpty() }
+    }
+
+    @Test
+    fun `should be List-String- when array with simple type string under items`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("string"))))))
+        expect(ParameterizedTypeName.get(List::class, String::class)){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
+        expect(true){ typePool.isEmpty() }
+    }
+
+    @Test
+    fun `should be List-OtherItem- when array with object type and OtherItem should be generated`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("object")), properties = JsonDefinitions(mapOf("a" to JsonSchema(type = JsonTypes(listOf("string")))))))))
+        expect(ParameterizedTypeName.get(List::class.asClassName(), ClassName.bestGuess("abc.OtherItem"))){ SchemaMapper.typeFrom("abc", "Other", schema, true, typePool) }
+        expect(1){ typePool.count() }
+        with(typePool[0]){
+            expect("OtherItem"){ name }
+            expect(1){ propertySpecs.count() }
+            with(this.primaryConstructor){
+                with(this!!.parameters[0]){
+                    expect("a"){ name }
+                    expect(String::class.asTypeName().asNullable()){ type }
+                    expect("null"){ defaultValue.toString() }
+                }
+            }
+            with(propertySpecs[0]){
+                expect("a"){ name }
+                expect(String::class.asTypeName().asNullable()){ type }
+            }
+        }
     }
 }

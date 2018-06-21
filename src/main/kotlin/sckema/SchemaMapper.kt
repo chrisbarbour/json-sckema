@@ -21,17 +21,16 @@ fun main(args: Array<String>){
     actualArgs.map { println(it) }
     val location = actualArgs[0]
     File(location).mkdir()
-    val mapper = SchemaMapper()
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
 
     actualArgs.asList().subList(3, actualArgs.size).forEach {
-        mapper.map(actualArgs[1], File(it).readText(), yaml = yaml).map { it.writeTo(Paths.get(location)) }
+        SchemaMapper.map(actualArgs[1], File(it).readText(), yaml = yaml).map { it.writeTo(Paths.get(location)) }
     }
 }
 
 fun <T: Any> KClass<T>.resource(resource: String) = String(this.java.classLoader.getResourceAsStream(resource).readBytes())
 
-class SchemaMapper{
+object SchemaMapper{
 
     fun map(`package`: String, schemaString: String, yaml: Boolean = true): List<FileSpec>{
         val objectMapper = if(yaml) yamlJackson else jackson
@@ -91,7 +90,7 @@ class SchemaMapper{
     fun typeFrom(`package`: String, parentName: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): TypeName{
         if(definition is JsonSchema) {
             val typeName = if(definition.`$ref` != null){
-                ClassName("", definition.`$ref`.substring("#/definitions/".length))
+                ClassName(`package`, definition.`$ref`.substring("#/definitions/".length))
             }
             else {
                 when (definition.type!!.types.first()) { // only handling simple types here
@@ -99,20 +98,8 @@ class SchemaMapper{
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
-                    "array" -> {
-                        val schema = definition.items!!.schemas.first() // Homogenous for now
-                        if(schema.`$ref` != null){
-                            ParameterizedTypeName.get(List::class.asClassName(),ClassName(`package`,schema.`$ref`.substring("#/definitions/".length)))
-                        }
-                        else if(schema.type!!.types.first() == "object"){
-                            val newType = typeFrom(`package`, parentName + "Item", schema, typePool)
-                            typePool.add(newType!!)
-                            ParameterizedTypeName.get(List::class.asClassName(), ClassName(`package`,  parentName + "Item"))
-                        }
-                        else {
-                            ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`, parentName + "Item", schema, true, typePool))
-                        }
-                    }
+                    "object" -> typeFrom(`package`, parentName, definition, typePool).let { typePool.add(it!!); return ClassName(`package`, parentName) }
+                    "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
                     else -> throw IllegalArgumentException()
                 }
             }
@@ -122,16 +109,14 @@ class SchemaMapper{
         throw IllegalArgumentException()
     }
 
-    companion object {
-        private val jackson = jacksonObjectMapper()
-        private val yamlJackson = ObjectMapper(YAMLFactory())
-        init {
-            val module = SimpleModule()
-            module.addDeserializer(JsonDefinitions::class.java, DefinitionsDeserializer())
-            module.addDeserializer(JsonTypes::class.java, TypesDeserializer())
-            module.addDeserializer(JsonItems::class.java, ItemsDeserializer())
-            jackson.registerModule(module)
-            yamlJackson.registerModule(module)
-        }
+    private val jackson = jacksonObjectMapper()
+    private val yamlJackson = ObjectMapper(YAMLFactory())
+    init {
+        val module = SimpleModule()
+        module.addDeserializer(JsonDefinitions::class.java, DefinitionsDeserializer())
+        module.addDeserializer(JsonTypes::class.java, TypesDeserializer())
+        module.addDeserializer(JsonItems::class.java, ItemsDeserializer())
+        jackson.registerModule(module)
+        yamlJackson.registerModule(module)
     }
 }
