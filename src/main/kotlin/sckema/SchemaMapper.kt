@@ -87,6 +87,7 @@ object SchemaMapper{
     fun propertyFrom(name: String, `package`: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): PropertySpec{
         return PropertySpec.builder(name,typeFrom(`package`, name, definition, required, typePool)).initializer(name).build()
     }
+    private fun String.capitalizeFirst() = this[0].toUpperCase() + this.substring(1)
     fun typeFrom(`package`: String, parentName: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): TypeName{
         if(definition is JsonSchema) {
             val typeName = if(definition.`$ref` != null){
@@ -98,7 +99,7 @@ object SchemaMapper{
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
-                    "object" -> typeFrom(`package`, parentName, definition, typePool).let { typePool.add(it!!); return ClassName(`package`, parentName) }
+                    "object" -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
                     "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
                     else -> throw IllegalArgumentException()
                 }

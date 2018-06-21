@@ -99,4 +99,52 @@ class SchemaMapperTest{
             }
         }
     }
+
+    @Test
+    fun `should generate two objects when one has an object property`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(
+                type = JsonTypes(listOf("object")),
+                properties = JsonDefinitions(mapOf(
+                        "a" to JsonSchema(
+                                type = JsonTypes(listOf("object")),
+                                properties = JsonDefinitions(mapOf(
+                                        "b" to JsonSchema(
+                                                type = JsonTypes(listOf("string"))
+                                        )))
+                        )))
+        )
+        expect(ClassName("abc","T")){ SchemaMapper.typeFrom("abc", "T", schema, true, typePool) }
+        expect(2){ typePool.count() }
+        with(typePool[0]){
+            expect("A"){ name }
+            expect(1){ propertySpecs.count() }
+            with(this.primaryConstructor){
+                with(this!!.parameters[0]){
+                    expect("b"){ name }
+                    expect(String::class.asTypeName().asNullable()){ type }
+                    expect("null"){ defaultValue.toString() }
+                }
+            }
+            with(propertySpecs[0]){
+                expect("b"){ name }
+                expect(String::class.asTypeName().asNullable()){ type }
+            }
+        }
+        with(typePool[1]){
+            expect("T"){ name }
+            expect(1){ propertySpecs.count() }
+            with(this.primaryConstructor){
+                with(this!!.parameters[0]){
+                    expect("a"){ name }
+                    expect(ClassName("abc","A").asNullable()){ type }
+                    expect("null"){ defaultValue.toString() }
+                }
+            }
+            with(propertySpecs[0]){
+                expect("a"){ name }
+                expect(ClassName("abc","A").asNullable()){ type }
+            }
+        }
+    }
 }
