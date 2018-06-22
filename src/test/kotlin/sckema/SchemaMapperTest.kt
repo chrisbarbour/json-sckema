@@ -3,6 +3,8 @@ import com.squareup.kotlinpoet.*
 import org.junit.Test
 import sckema.*
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.reflect.KClass
 import kotlin.test.expect
 
@@ -44,9 +46,9 @@ class SchemaMapperTest{
         }
     }
 
-    fun simpleTypeTestFor(typeName: String, type: KClass<*>){
+    fun simpleTypeTestFor(typeName: String, type: KClass<*>, format: String? = null){
         val typePool = mutableListOf<TypeSpec>()
-        val schema = JsonSchema(type = JsonTypes(listOf(typeName)))
+        val schema = JsonSchema(type = JsonTypes(listOf(typeName)), format = format)
         expect(type.asTypeName()){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
         expect(type.asTypeName().asNullable()){ SchemaMapper.typeFrom("abc", "parent", schema, false, typePool) }
         expect(true){ typePool.isEmpty() }
@@ -60,6 +62,12 @@ class SchemaMapperTest{
     fun `should be Integer when integer schema type`() = simpleTypeTestFor("integer", Int::class)
     @Test
     fun `should be Boolean when boolean schema type`() = simpleTypeTestFor("boolean", Boolean::class)
+
+    @Test
+    fun `should be LocalDate when string schema type and date format`() = simpleTypeTestFor("string", LocalDate::class, "date")
+    @Test
+    fun `should be LocalDateTime when string schema type and date-time format`() = simpleTypeTestFor("string", LocalDateTime::class, "date-time")
+
     @Test
     fun `should be Item when ref schema`(){
         val typePool = mutableListOf<TypeSpec>()
