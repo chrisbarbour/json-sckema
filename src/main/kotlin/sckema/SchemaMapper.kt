@@ -8,8 +8,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.squareup.kotlinpoet.*
 import java.io.File
 import java.math.BigDecimal
-import java.nio.file.Files
 import java.nio.file.Paths
+import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.reflect.KClass
 
 // 0 - Location
@@ -95,7 +96,13 @@ object SchemaMapper{
             }
             else {
                 when (definition.type!!.types.first()) { // only handling simple types here
-                    "string" -> String::class.asTypeName()
+                    "string" -> {
+                        when (definition.format) {
+                            "date" -> LocalDate::class.asTypeName()
+                            "date-time" -> LocalDateTime::class.asTypeName()
+                            else -> String::class.asTypeName()
+                        }
+                    }
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
