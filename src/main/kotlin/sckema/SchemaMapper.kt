@@ -8,8 +8,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.squareup.kotlinpoet.*
 import java.io.File
 import java.math.BigDecimal
-import java.nio.file.Files
 import java.nio.file.Paths
+import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.reflect.KClass
 
 // 0 - Location
@@ -99,6 +100,8 @@ object SchemaMapper{
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
+                    "date" -> LocalDate::class.asTypeName()
+                    "datetime" -> LocalDateTime::class.asTypeName()
                     "object" -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
                     "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
                     else -> throw IllegalArgumentException()
