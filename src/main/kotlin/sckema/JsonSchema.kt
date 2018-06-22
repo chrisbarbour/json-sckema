@@ -17,6 +17,7 @@ data class JsonSchema(
         val `$ref`: String? = null,
         @JsonDeserialize(using = TypesDeserializer::class) val type: JsonTypes? = null,
         @JsonDeserialize(using = ItemsDeserializer::class) val items: JsonItems? = null,
+        val format: String? = null,
         val enum: List<String>? = null,
         val maxLength: Int? = null,
         val minLength: Int? = null,

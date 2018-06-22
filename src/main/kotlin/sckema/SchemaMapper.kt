@@ -96,12 +96,16 @@ object SchemaMapper{
             }
             else {
                 when (definition.type!!.types.first()) { // only handling simple types here
-                    "string" -> String::class.asTypeName()
+                    "string" -> {
+                        when (definition.format) {
+                            "date" -> LocalDate::class.asTypeName()
+                            "date-time" -> LocalDateTime::class.asTypeName()
+                            else -> String::class.asTypeName()
+                        }
+                    }
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
-                    "date" -> LocalDate::class.asTypeName()
-                    "datetime" -> LocalDateTime::class.asTypeName()
                     "object" -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
                     "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
                     else -> throw IllegalArgumentException()
