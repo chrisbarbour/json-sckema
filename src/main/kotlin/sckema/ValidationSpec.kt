@@ -23,7 +23,7 @@ object ValidationSpec{
                         "integer" -> numberValidation(it.first, required, it.second)
                         else ->
                             if(it.second.`$ref` != null)
-                                listOf(CodeBlock.of("   ${it.first}${if(required) "" else "?"}.let{ it.validate(\"${it.first}\").asChildrenOf(name) }"))
+                                listOf(CodeBlock.of("   this.${it.first}${if(required) "" else "?"}.let{ it.validate(\"${it.first}\").asChildrenOf(name) }"))
                             else emptyList()
                     }
                 }
@@ -45,18 +45,18 @@ object ValidationSpec{
 
     private fun stringValidation(name: String, required: Boolean, schema: JsonSchema): List<CodeBlock>{
         return listOfNotNull(
-                if(schema.maxLength != null) CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it.length > ${schema.maxLength} ) listOf(ValidationError(\"$name\", ValidationReason.STRING_LENGTH, ValidationError.messageForStringMax(${schema.maxLength}))) else null }") else null,
-                if(schema.minLength != null) CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it.length < ${schema.minLength} ) listOf(ValidationError(\"$name\", ValidationReason.STRING_LENGTH, ValidationError.messageForStringMin(${schema.minLength}))) else null }") else null,
-                if(schema.pattern != null) CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( !it.matches( %T(\"${schema.pattern}\") ) ) listOf(ValidationError(\"$name\", ValidationReason.STRING_PATTERN, ValidationError.messageForStringPattern(\"${schema.pattern}\"))) else null }", Regex::class) else null
+                if(schema.maxLength != null) CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it.length > ${schema.maxLength} ) listOf(ValidationError(\"$name\", ValidationReason.STRING_LENGTH, ValidationError.messageForStringMax(${schema.maxLength}))) else null }") else null,
+                if(schema.minLength != null) CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it.length < ${schema.minLength} ) listOf(ValidationError(\"$name\", ValidationReason.STRING_LENGTH, ValidationError.messageForStringMin(${schema.minLength}))) else null }") else null,
+                if(schema.pattern != null) CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( !it.matches( %T(\"${schema.pattern}\") ) ) listOf(ValidationError(\"$name\", ValidationReason.STRING_PATTERN, ValidationError.messageForStringPattern(\"${schema.pattern}\"))) else null }", Regex::class) else null
         )
     }
 
     private fun numberValidation(name: String, required: Boolean, schema: JsonSchema): List<CodeBlock>{
         return listOfNotNull(
-                if(schema.minimum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it <= ${schema.minimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMin(${schema.minimum}))) else null }") else null,
-                if(schema.exclusiveMinimum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMinimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMin(${schema.exclusiveMinimum}))) else null }") else null,
-                if(schema.maximum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it >= ${schema.maximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMax(${schema.maximum}))) else null }") else null,
-                if(schema.exclusiveMaximum != null)CodeBlock.of("   $name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMaximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMax(${schema.exclusiveMaximum}))) else null }") else null
+                if(schema.minimum != null)CodeBlock.of("  this.$name${if(required) "" else "?"}.let{ if( it <= ${schema.minimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMin(${schema.minimum}))) else null }") else null,
+                if(schema.exclusiveMinimum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMinimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMin(${schema.exclusiveMinimum}))) else null }") else null,
+                if(schema.maximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it >= ${schema.maximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMax(${schema.maximum}))) else null }") else null,
+                if(schema.exclusiveMaximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMaximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMax(${schema.exclusiveMaximum}))) else null }") else null
         )
     }
 
