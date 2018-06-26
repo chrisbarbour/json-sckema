@@ -65,6 +65,7 @@ class SchemaMapperTest{
 
     @Test
     fun `should be LocalDate when string schema type and date format`() = simpleTypeTestFor("string", LocalDate::class, "date")
+
     @Test
     fun `should be LocalDateTime when string schema type and date-time format`() = simpleTypeTestFor("string", LocalDateTime::class, "date-time")
 
@@ -83,6 +84,40 @@ class SchemaMapperTest{
         val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("string"))))))
         expect(ParameterizedTypeName.get(List::class, String::class)){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
         expect(true){ typePool.isEmpty() }
+    }
+
+    @Test
+    fun `should be annotated with serializer & deserializer for date formatted string`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf("string")), format = "date")
+
+        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+
+        expect(2) {properties.annotations.size }
+        expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer::class)") }
+        expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer::class)") }
+    }
+
+    @Test
+    fun `should be annotated with serializer & deserializer for date-time formatted string`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf("string")), format = "date-time")
+
+        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+
+        expect(2) {properties.annotations.size }
+        expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer::class)") }
+        expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer::class)") }
+    }
+
+    @Test
+    fun `should not be annotated for non-date string`(){
+        val typePool = mutableListOf<TypeSpec>()
+        val schema = JsonSchema(type = JsonTypes(listOf("string")))
+
+        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+
+        expect(0) {properties.annotations.size }
     }
 
     @Test
