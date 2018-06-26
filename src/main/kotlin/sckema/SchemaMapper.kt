@@ -1,8 +1,14 @@
 package sckema
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.squareup.kotlinpoet.*
@@ -86,9 +92,34 @@ object SchemaMapper{
     }
 
     fun propertyFrom(name: String, `package`: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): PropertySpec{
-        return PropertySpec.builder(name,typeFrom(`package`, name, definition, required, typePool)).initializer(name).build()
+        return PropertySpec.builder(name,typeFrom(`package`, name, definition, required, typePool))
+                .addAnnotations(annotationsFrom(definition))
+                .initializer(name).build()
     }
+
+    fun annotationsFrom(definition: JsonDefinition): List<AnnotationSpec> {
+
+        if(definition is JsonSchema) {
+            var annotations: ArrayList<AnnotationSpec> = ArrayList()
+
+            when (definition.format) {
+                "date" -> {
+                    annotations.add(AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateDeserializer::class.java).build())
+                    annotations.add(AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateSerializer::class.java).build())
+                }
+                "date-time" -> {
+                    annotations.add(AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateTimeDeserializer::class.java).build())
+                    annotations.add(AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateTimeSerializer::class.java).build())
+                }
+            }
+
+            return annotations
+        }
+        throw IllegalArgumentException()
+    }
+
     private fun String.capitalizeFirst() = this[0].toUpperCase() + this.substring(1)
+
     fun typeFrom(`package`: String, parentName: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): TypeName{
         if(definition is JsonSchema) {
             val typeName = if(definition.`$ref` != null){
