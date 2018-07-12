@@ -15,7 +15,8 @@ class SchemaMapperTest{
                 "A" to JsonSchema(
                         type = JsonTypes(listOf("object")),
                         properties = JsonDefinitions(definitions = mapOf(
-                                "B" to JsonSchema(type = JsonTypes(listOf("string")))
+                                "B" to JsonSchema(type = JsonTypes(listOf("string"))),
+                                "\$id" to JsonSchema(type = JsonTypes(listOf("string")))
                         ) )
                 ))
         ))
@@ -29,16 +30,25 @@ class SchemaMapperTest{
                 expect(true){ this is TypeSpec }
                 with(this as TypeSpec){
                     expect("A"){ name }
-                    expect(1){ propertySpecs.count() }
+                    expect(2){ propertySpecs.count() }
                     with(this.primaryConstructor){
                         with(this!!.parameters[0]){
                             expect("B"){ name }
                             expect(String::class.asTypeName().asNullable()){ type }
                             expect("null"){ defaultValue.toString() }
                         }
+                        with(this.parameters[1]){
+                            expect("`\$id`"){ name }
+                            expect(String::class.asTypeName().asNullable()){ type }
+                            expect("null"){ defaultValue.toString() }
+                        }
                     }
                     with(propertySpecs[0]){
                         expect("B"){ name }
+                        expect(String::class.asTypeName().asNullable()){ type }
+                    }
+                    with(propertySpecs[1]){
+                        expect("`\$id`"){ name }
                         expect(String::class.asTypeName().asNullable()){ type }
                     }
                 }
