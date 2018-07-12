@@ -139,7 +139,7 @@ object SchemaMapper{
                         }
                     }
                     "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
-                    else -> throw IllegalArgumentException()
+                    else -> Any::class.asTypeName()
                 }
             }
             return if(required) typeName
