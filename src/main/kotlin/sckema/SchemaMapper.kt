@@ -97,26 +97,21 @@ object SchemaMapper{
                 .initializer(name).build()
     }
 
-    fun annotationsFrom(definition: JsonDefinition): List<AnnotationSpec> {
-
-        if(definition is JsonSchema) {
-            var annotations: ArrayList<AnnotationSpec> = ArrayList()
-
+    fun annotationsFrom(definition: JsonDefinition) =
+            if(definition is JsonSchema) {
             when (definition.format) {
-                "date" -> {
-                    annotations.add(AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateDeserializer::class.java).build())
-                    annotations.add(AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateSerializer::class.java).build())
-                }
-                "date-time" -> {
-                    annotations.add(AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateTimeDeserializer::class.java).build())
-                    annotations.add(AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateTimeSerializer::class.java).build())
-                }
+                "date" -> listOf(
+                        AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateDeserializer::class.java).build(),
+                        AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateSerializer::class.java).build()
+                )
+                "date-time" -> listOf(
+                        AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateTimeDeserializer::class.java).build(),
+                        AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateTimeSerializer::class.java).build()
+                )
+                else -> emptyList()
             }
-
-            return annotations
         }
-        throw IllegalArgumentException()
-    }
+        else throw IllegalArgumentException()
 
     private fun String.capitalizeFirst() = this[0].toUpperCase() + this.substring(1)
 
@@ -137,7 +132,12 @@ object SchemaMapper{
                     "number" -> BigDecimal::class.asTypeName()
                     "integer" -> Int::class.asTypeName()
                     "boolean" -> Boolean::class.asTypeName()
-                    "object" -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
+                    "object" -> {
+                        when{
+                            definition.properties != null -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
+                            else -> Any::class.asTypeName()
+                        }
+                    }
                     "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
                     else -> throw IllegalArgumentException()
                 }
