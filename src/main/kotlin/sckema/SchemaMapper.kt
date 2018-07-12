@@ -58,13 +58,15 @@ object SchemaMapper{
         return totalTypes.map { FileSpec.get(`package`,it) }
     }
 
+    fun nameFrom(name: String) = if(name.startsWith('$')) "`$name`" else name
+
     fun typeFrom(`package`: String, name: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): TypeSpec?{
         if(schema.properties != null) {
             return TypeSpec
                     .classBuilder(name)
                     .addModifiers(KModifier.DATA)
                     .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
-                    .addProperties(schema.properties.definitions.map { propertyFrom(it.key,`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
+                    .addProperties(schema.properties.definitions.map { propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
                     .addFunction(ValidationSpec.validationForObject(`package`, schema))
                     .build()
         }
@@ -85,7 +87,7 @@ object SchemaMapper{
         return definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
             acc, definition ->
             val isRequired = required.contains(definition.first)
-            val parameter = ParameterSpec.builder(definition.first,typeFrom(`package`, definition.first, definition.second, isRequired, typePool))
+            val parameter = ParameterSpec.builder(nameFrom(definition.first),typeFrom(`package`, definition.first, definition.second, isRequired, typePool))
             if(!isRequired) parameter.defaultValue("null")
             acc.addParameter(parameter.build())
         }.build()
