@@ -122,8 +122,9 @@ object SchemaMapper{
             val typeName = if(definition.`$ref` != null){
                 ClassName(`package`, definition.`$ref`.substring("#/definitions/".length))
             }
+            else if(definition.type == null) Any::class.asTypeName()
             else {
-                when (definition.type!!.types.first()) { // only handling simple types here
+                when (definition.type.types.first()) { // only handling simple types here
                     "string" -> {
                         when (definition.format) {
                             "date" -> LocalDate::class.asTypeName()
