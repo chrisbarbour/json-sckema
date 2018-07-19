@@ -88,7 +88,18 @@ object SchemaMapper{
             acc, definition ->
             val isRequired = required.contains(definition.first)
             val parameter = ParameterSpec.builder(nameFrom(definition.first),typeFrom(`package`, definition.first, definition.second, isRequired, typePool))
-            if(!isRequired) parameter.defaultValue("null")
+            var defaultValue = ""
+            if(definition.second is JsonSchema){
+                val def = definition.second as JsonSchema
+                if(def.default != null){
+                    val type = def.type?.types?.get(0)
+                    when(type){
+                        "string" -> defaultValue = "\"${def.default}\""
+                    }
+                }
+            }
+            if(!isRequired && defaultValue.isEmpty()) defaultValue = "null"
+            parameter.defaultValue(defaultValue)
             acc.addParameter(parameter.build())
         }.build()
     }
