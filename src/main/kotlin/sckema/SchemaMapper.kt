@@ -99,7 +99,7 @@ object SchemaMapper{
                 }
             }
             if(!isRequired && defaultValue.isEmpty()) defaultValue = "null"
-            parameter.defaultValue(defaultValue)
+            if(defaultValue.isNotEmpty()) parameter.defaultValue(defaultValue)
             acc.addParameter(parameter.build())
         }.build()
     }
