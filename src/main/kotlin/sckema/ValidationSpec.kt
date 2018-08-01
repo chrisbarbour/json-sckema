@@ -6,12 +6,7 @@ import java.math.BigDecimal
 
 object ValidationSpec{
 
-    fun enumFrom(name: String, entries: List<String>) =
-            TypeSpec.enumBuilder(name).also { enum ->
-                entries.forEach { enum.addEnumConstant(it) }
-            }
-
-    fun validationForObject(`package`: String, schema: JsonSchema): FunSpec{
+    fun validationForObject(`package`: String, schema: JsonSchema, override: Boolean = false): FunSpec?{
         val requiredList = schema.required.orEmpty()
         val validations = (schema.properties as JsonDefinitions).definitions
                 .map { it.key to it.value as JsonSchema }
@@ -27,7 +22,11 @@ object ValidationSpec{
                             else emptyList()
                     }
                 }
+        if(validations.isEmpty() && override) return null
         val functionBuilder = FunSpec.builder("validate")
+                .also {
+                    if(override)it.addModifiers(KModifier.OVERRIDE)
+                }
                 .addParameter("name", String::class)
                 .returns(ClassName(`package`, "Validation"))
         if(validations.isEmpty()){
@@ -35,6 +34,7 @@ object ValidationSpec{
         }
         else {
             functionBuilder.addCode("val validations = listOfNotNull(\n")
+            if(override) functionBuilder.addCode("super.validate(name).asChildrenOf(name),\n")
             validations.forEachIndexed { index, codeBlock ->
                 functionBuilder.addCode(codeBlock).addCode(if (index < validations.size - 1) ",\n" else "\n")
             }

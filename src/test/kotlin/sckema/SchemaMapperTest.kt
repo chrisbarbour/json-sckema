@@ -5,6 +5,7 @@ import sckema.*
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlin.math.exp
 import kotlin.reflect.KClass
 import kotlin.test.expect
 
@@ -199,5 +200,33 @@ class SchemaMapperTest{
                 expect(ClassName("abc","A").asNullable()){ type }
             }
         }
+    }
+
+    @Test
+    fun `should extend when using allOf`(){
+        val nameSchema = JsonSchema(
+                type = JsonTypes(listOf("object")),
+                properties = JsonDefinitions(mapOf(
+                        "name" to JsonSchema(
+                                type = JsonTypes(listOf("string"))
+                        )))
+        )
+
+        val objectSchema = JsonSchema(
+                allOf = listOf(
+                        JsonSchema(`$ref` = "#/definitions/NameInfo"),
+                        JsonSchema(
+                                type = JsonTypes(listOf("object")),
+                                properties = JsonDefinitions(mapOf(
+                                        "other" to JsonSchema(
+                                                type = JsonTypes(listOf("string"))
+                                        )))
+                        )
+                )
+        )
+
+        val nameInfoType = SchemaMapper.typeFrom("","NameInfo", nameSchema, mutableListOf())!!
+        val objectType = SchemaMapper.typeFrom("", "ObjectInfo", objectSchema, mutableListOf(nameInfoType))
+        println(objectType)
     }
 }

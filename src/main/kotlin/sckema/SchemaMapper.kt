@@ -46,31 +46,97 @@ object SchemaMapper{
     }
 
     fun map(`package`: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): List<FileSpec>{
-        val type = schema.type ?: "object"
-        val definitions = if(schema.definitions != null && type == "object"){
-            definitions(`package`, schema.definitions, typePool)
-        }
-        else emptyList()
-        val name = schema.`$id`?.substringAfterLast("/")?.substringBeforeLast(".json") ?: "Unknown"
-        val types = definitions + listOfNotNull(typeFrom(`package`, name, schema, typePool))
-        val totalTypes = types + typePool.filter { types.find { type -> type.name === it.name } == null }
-
-        return totalTypes.map { FileSpec.get(`package`,it) }
+        definitions(`package`, schema.definitions!!, typePool)
+        return typePool.map { FileSpec.get(`package`,it) }
     }
 
     fun nameFrom(name: String) = if(name.startsWith('$')) "`$name`" else name
 
+    private fun FunSpec.open(all: Boolean = false) = FunSpec.builder(name)
+            .addParameters(parameters.map { if(all) it.open() else it })
+            .addCode(this.body)
+            .also {
+                if(this.returnType != null) it.returns(this.returnType!!)
+                if(!all) it.addModifiers(KModifier.OPEN)
+            }
+            .build()
+
+    private fun PropertySpec.open() =
+            if(!modifiers.contains(KModifier.OPEN)) this.toBuilder()
+                    .addModifiers(KModifier.OPEN).build() else this
+    private fun ParameterSpec.open() =
+            if(!modifiers.contains(KModifier.OPEN)) this.toBuilder()
+                    .also { if(this.defaultValue != null)it.defaultValue(this.defaultValue!!) }
+                    .addModifiers(KModifier.OPEN).build() else this
+
+    private fun ParameterSpec.override() = ParameterSpec.builder(name,type,KModifier.OVERRIDE)
+            .also { if(defaultValue != null) it.defaultValue(defaultValue!!) }
+            .build()
+
+    private fun PropertySpec.override() = PropertySpec.builder(name,type,KModifier.OVERRIDE)
+            .also { if(initializer != null) it.initializer(initializer!!) }
+            .build()
+
+    private fun TypeSpec.open() = TypeSpec
+            .classBuilder(name!!)
+            .addModifiers(KModifier.OPEN)
+            .primaryConstructor(primaryConstructor!!.open(true))
+            .addProperties(propertySpecs.map { it.open() })
+            .addFunctions(funSpecs.map { if(it.name == "validate") it.open(false) else it })
+            .build()
+
     fun typeFrom(`package`: String, name: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): TypeSpec?{
-        if(schema.properties != null) {
-            return TypeSpec
-                    .classBuilder(name)
-                    .addModifiers(KModifier.DATA)
-                    .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
-                    .addProperties(schema.properties.definitions.map { propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
-                    .addFunction(ValidationSpec.validationForObject(`package`, schema))
-                    .build()
+        return if(schema.properties != null) {
+            TypeSpec
+                .classBuilder(name)
+                .addModifiers(KModifier.DATA)
+                .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
+                .addProperties(schema.properties.definitions.map { propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
+                .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
+                .build()
         }
-        return null
+        else if(schema.allOf != null && schema.allOf.first().`$ref` != null){ //special case for extension
+            val ref = schema.allOf.first().`$ref`!!.substring("#/definitions/".length)
+            val referenced = typePool.find { it.name == ref }
+            if(referenced != null){
+                typePool.remove(referenced)
+                typePool.add(referenced.open())
+                typeFromAllOf(`package`, name, schema.allOf, referenced, typePool)
+            }
+            else null
+        }
+        else null
+    }
+
+    fun typeFromAllOf(`package`: String, name: String, schemas: List<JsonSchema>, referenced: TypeSpec, typePool: MutableList<TypeSpec>): TypeSpec? {
+        val properties = schemas[1].properties!!
+        val required = schemas[1].required
+        return TypeSpec
+                .classBuilder(name)
+                .addModifiers(KModifier.DATA)
+                .primaryConstructor(
+                        constructorFor(`package`, properties, required.orEmpty(), typePool)
+                            .toBuilder()
+                            .addParameters(referenced.primaryConstructor!!.parameters.map { it.override()  })
+                            .build()
+                )
+                .addProperties(
+                        properties.definitions.map {
+                            propertyFrom(nameFrom(it.key),`package`, it.value, required.orEmpty().contains(it.key), typePool)
+                        } + referenced.propertySpecs.map { it.override() }
+
+                )
+                .also {
+                    val validate = ValidationSpec.validationForObject(`package`, schemas[1], true)
+                    if(validate != null) it.addFunction(validate)
+                }
+                .superclass(ClassName(`package`,referenced.name!!))
+                .also { type ->
+                    referenced.primaryConstructor!!.parameters.forEach {
+                        type.addSuperclassConstructorParameter(it.name)
+                    }
+                }
+                .build()
     }
 
     fun definitions(`package`: String, definitions: JsonDefinitions, typePool: MutableList<TypeSpec>): List<TypeSpec>{
@@ -78,10 +144,11 @@ object SchemaMapper{
                 .filter { it.value is JsonSchema }
                 .map { it.key to it.value as JsonSchema }
                 .let {
-                    it.filter { it.second.type?.types?.first() == "object" }
+                    it.filter { it.second.type?.types?.first() == "object" || it.second.allOf != null }
                     .mapNotNull { typeFrom(`package`, it.first, it.second, typePool)?.also { typePool.add(it) } }
                 }
     }
+
 
     fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>, typePool: MutableList<TypeSpec>): FunSpec{
         return definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
