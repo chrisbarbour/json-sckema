@@ -19,6 +19,8 @@ data class JsonSchema(
         @JsonDeserialize(using = ItemsDeserializer::class) val items: JsonItems? = null,
         val format: String? = null,
         val enum: List<String>? = null,
+        val minItems: Int? = null,
+        val maxItems: Int? = null,
         val maxLength: Int? = null,
         val minLength: Int? = null,
         val pattern: String? = null,
@@ -74,7 +76,7 @@ class ItemsDeserializer: JsonDeserializer<JsonItems>(){
     override fun deserialize(parser: JsonParser, context: DeserializationContext): JsonItems {
         val codec = parser.codec
         val node: JsonNode = codec.readTree(parser)
-        val schemas = if(node.isArray) node.fields().asSequence().map { it.value }.toList() else listOf(node)
+        val schemas = if(node.isArray) node.toList() else listOf(node)
         return JsonItems( schemas.map { codec.treeToValue(it, JsonSchema::class.java) } )
     }
 }

@@ -30,8 +30,8 @@ fun main(args: Array<String>){
     File(location).mkdir()
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
 
-    actualArgs.asList().subList(3, actualArgs.size).forEach {
-        SchemaMapper.map(actualArgs[1], File(it).readText(), yaml = yaml).map { it.writeTo(Paths.get(location)) }
+    actualArgs.asList().subList(4, actualArgs.size).forEach {
+        SchemaMapper.map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[3]).map { it.writeTo(Paths.get(location)) }
     }
 }
 
@@ -39,15 +39,16 @@ fun <T: Any> KClass<T>.resource(resource: String) = String(this.java.classLoader
 
 object SchemaMapper{
 
-    fun map(`package`: String, schemaString: String, yaml: Boolean = true): List<FileSpec>{
+    fun map(`package`: String, schemaString: String, yaml: Boolean = true, parent: String? = null): List<FileSpec>{
         val objectMapper = if(yaml) yamlJackson else jackson
         val jsonSchema: JsonSchema = objectMapper.readValue(schemaString)
-        return map(`package`, jsonSchema, mutableListOf()) + ValidationSpec.validationHelpers(`package`)
+        return map(`package`, jsonSchema, mutableListOf(), parent) + ValidationSpec.validationHelpers(`package`)
     }
 
-    fun map(`package`: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): List<FileSpec>{
+    fun map(`package`: String, schema: JsonSchema, typePool: MutableList<TypeSpec>, parentName: String? = null): List<FileSpec>{
+        val parent = if(schema.properties != null) typeFrom(`package`, parentName!!, schema, typePool) else null
         definitions(`package`, schema.definitions!!, typePool)
-        return typePool.map { FileSpec.get(`package`,it) }
+        return (listOfNotNull(parent) + typePool).map { FileSpec.get(`package`,it) }
     }
 
     fun nameFrom(name: String) = if(name.startsWith('$')) "`$name`" else name
@@ -57,7 +58,7 @@ object SchemaMapper{
             .addCode(this.body)
             .also {
                 if(this.returnType != null) it.returns(this.returnType!!)
-                if(!all) it.addModifiers(KModifier.OPEN)
+                if(!all) it.addModifiers(*(modifiers + KModifier.OPEN).toTypedArray())
             }
             .build()
 
@@ -79,8 +80,12 @@ object SchemaMapper{
 
     private fun TypeSpec.open() = TypeSpec
             .classBuilder(name!!)
-            .addModifiers(KModifier.OPEN)
+            .addModifiers(*(this.modifiers + KModifier.OPEN - KModifier.DATA).toTypedArray())
             .primaryConstructor(primaryConstructor!!.open(true))
+            .superclass(superclass)
+            .also { type ->
+                superclassConstructorParameters.forEach { type.addSuperclassConstructorParameter(it) }
+            }
             .addProperties(propertySpecs.map { it.open() })
             .addFunctions(funSpecs.map { if(it.name == "validate") it.open(false) else it })
             .build()
@@ -88,8 +93,9 @@ object SchemaMapper{
     fun typeFrom(`package`: String, name: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): TypeSpec?{
         return if(schema.properties != null) {
             TypeSpec
-                .classBuilder(name)
-                .addModifiers(KModifier.DATA)
+                .classBuilder(name).also {
+                    if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
+                }
                 .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
                 .addProperties(schema.properties.definitions.map { propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
                 .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
@@ -219,7 +225,7 @@ object SchemaMapper{
                             else -> Any::class.asTypeName()
                         }
                     }
-                    "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.first(), true, typePool))
+                    "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.firstOrNull() ?: JsonSchema(), true, typePool))
                     else -> Any::class.asTypeName()
                 }
             }
