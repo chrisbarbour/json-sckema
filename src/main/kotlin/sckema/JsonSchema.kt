@@ -36,7 +36,8 @@ data class JsonSchema(
         @JsonDeserialize(using = DefinitionsDeserializer::class) val definitions: JsonDefinitions? = null,
         @JsonDeserialize(using = DefinitionsDeserializer::class) val properties: JsonDefinitions? = null,
         val allOf: List<JsonSchema>? = null,
-        val anyOf: List<JsonSchema>? = null
+        val anyOf: List<JsonSchema>? = null,
+        val metadata: Map<String, String>? = null
 ): JsonDefinition
 
 

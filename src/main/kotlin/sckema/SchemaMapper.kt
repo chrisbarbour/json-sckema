@@ -97,7 +97,11 @@ object SchemaMapper{
                     if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
                 }
                 .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
-                .addProperties(schema.properties.definitions.map { propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool) })
+                .addProperties(
+                        schema.properties.definitions.map {
+                            propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool)
+                        } + metadataPropertiesFrom(schema)
+                )
                 .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
                 .build()
         }
@@ -112,6 +116,15 @@ object SchemaMapper{
             else null
         }
         else null
+    }
+
+    fun metadataPropertiesFrom(schema: JsonSchema): List<PropertySpec>{
+        return if(schema.metadata != null){
+            schema.metadata.map {
+                PropertySpec.builder(it.key, String::class.asTypeName()).initializer("%S", it.value).build()
+            }
+        }
+        else emptyList()
     }
 
     fun typeFromAllOf(`package`: String, name: String, schemas: List<JsonSchema>, referenced: TypeSpec, typePool: MutableList<TypeSpec>): TypeSpec? {
