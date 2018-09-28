@@ -2,26 +2,59 @@
 import com.squareup.kotlinpoet.*
 import org.junit.Test
 import sckema.*
+import java.io.File
 import java.math.BigDecimal
+import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.LocalDateTime
-import kotlin.math.exp
 import kotlin.reflect.KClass
 import kotlin.test.expect
 
 class SchemaMapperTest{
+
     @Test
-    fun `should create simple type with one nullable field`(){
+    fun go(){
+        val text = SchemaMapperTest::class.java.classLoader.getResourceAsStream("swagger-test.yml").bufferedReader().readText()
+        SchemaMapper().map("test", text, yaml = true, parent = "Policy").map { it.writeTo(Paths.get("/Users/n0237573/Code/titan/json-sckema/target/generated-sources")) }
+    }
+
+    @Test
+    fun `should include additionalProperties of type Map -String Any- by default`(){
+        val schema = JsonSchema(type = JsonTypes(listOf("object")),
+            properties = JsonDefinitions(definitions = mapOf(
+                    "B" to JsonSchema(type = JsonTypes(listOf("string")))
+            ) )
+        )
+        val typeSpec = SchemaMapper().map("abc", schema, "A")[0].members[0] as TypeSpec
+        with(typeSpec.propertySpecs){
+            expect(2){ count() }
+            with(get(0)){ expect("B"){ name } }
+            with(get(1)){
+                expect("additionalProperties"){ name }
+                expect("additionalProperties"){ initializer.toString() }
+                expect(ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())){ type }
+            }
+        }
+        with(typeSpec.primaryConstructor!!){
+            expect(2){ parameters.size }
+            expect("B") { parameters[0].name }
+            expect("additionalProperties"){ parameters[1].name }
+        }
+    }
+
+    @Test
+    fun `should create simple type with one field that can be null`(){
         val schema = JsonSchema(definitions = JsonDefinitions(definitions = mapOf(
                 "A" to JsonSchema(
                         type = JsonTypes(listOf("object")),
+                        additionalProperties = AdditionalProperties(false),
                         properties = JsonDefinitions(definitions = mapOf(
                                 "B" to JsonSchema(type = JsonTypes(listOf("string"))),
                                 "\$id" to JsonSchema(type = JsonTypes(listOf("string")))
                         ) )
                 ))
         ))
-        val files = SchemaMapper.map("abc", schema, mutableListOf())
+        val files = SchemaMapper().map("abc", schema)
         expect(1){ files.count() }
         with(files[0]){
             expect("abc"){ packageName }
@@ -57,11 +90,11 @@ class SchemaMapperTest{
         }
     }
 
-    fun simpleTypeTestFor(typeName: String, type: KClass<*>, format: String? = null){
+    private fun simpleTypeTestFor(typeName: String, type: KClass<*>, format: String? = null){
         val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(type = JsonTypes(listOf(typeName)), format = format)
-        expect(type.asTypeName()){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
-        expect(type.asTypeName().asNullable()){ SchemaMapper.typeFrom("abc", "parent", schema, false, typePool) }
+        expect(type.asTypeName()){ SchemaMapper().typeFrom("abc", "parent", schema, true) }
+        expect(type.asTypeName().asNullable()){ SchemaMapper().typeFrom("abc", "parent", schema, false) }
         expect(true){ typePool.isEmpty() }
     }
 
@@ -84,8 +117,8 @@ class SchemaMapperTest{
     fun `should be Item when ref schema`(){
         val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(`$ref` = "#/definitions/Item")
-        expect(ClassName("abc", "Item")){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
-        expect(ClassName("abc", "Item").asNullable()){ SchemaMapper.typeFrom("abc", "parent", schema, false, typePool) }
+        expect(ClassName("abc", "Item")){ SchemaMapper().typeFrom("abc", "parent", schema, true) }
+        expect(ClassName("abc", "Item").asNullable()){ SchemaMapper().typeFrom("abc", "parent", schema, false) }
         expect(true){ typePool.isEmpty() }
     }
 
@@ -93,16 +126,15 @@ class SchemaMapperTest{
     fun `should be List-String- when array with simple type string under items`(){
         val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("string"))))))
-        expect(ParameterizedTypeName.get(List::class, String::class)){ SchemaMapper.typeFrom("abc", "parent", schema, true, typePool) }
+        expect(ParameterizedTypeName.get(List::class, String::class)){ SchemaMapper().typeFrom("abc", "parent", schema, true) }
         expect(true){ typePool.isEmpty() }
     }
 
     @Test
     fun `should be annotated with serializer & deserializer for date formatted string`(){
-        val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(type = JsonTypes(listOf("string")), format = "date")
 
-        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+        val properties: PropertySpec = SchemaMapper().propertyFrom("abc", "parent", schema, true)
 
         expect(2) {properties.annotations.size }
         expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer::class)") }
@@ -111,10 +143,9 @@ class SchemaMapperTest{
 
     @Test
     fun `should be annotated with serializer & deserializer for date-time formatted string`(){
-        val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(type = JsonTypes(listOf("string")), format = "date-time")
 
-        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+        val properties: PropertySpec = SchemaMapper().propertyFrom("abc", "parent", schema, true)
 
         expect(2) {properties.annotations.size }
         expect(true) {properties.annotations.map { a -> a.toString() }.contains("@com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer::class)") }
@@ -123,10 +154,9 @@ class SchemaMapperTest{
 
     @Test
     fun `should not be annotated for non-date string`(){
-        val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(type = JsonTypes(listOf("string")))
 
-        val properties: PropertySpec = SchemaMapper.propertyFrom("abc", "parent", schema, true, typePool)
+        val properties: PropertySpec = SchemaMapper().propertyFrom("abc", "parent", schema, true)
 
         expect(0) {properties.annotations.size }
     }
@@ -134,8 +164,8 @@ class SchemaMapperTest{
     @Test
     fun `should be List-OtherItem- when array with object type and OtherItem should be generated`(){
         val typePool = mutableListOf<TypeSpec>()
-        val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("object")), properties = JsonDefinitions(mapOf("a" to JsonSchema(type = JsonTypes(listOf("string")))))))))
-        expect(ParameterizedTypeName.get(List::class.asClassName(), ClassName.bestGuess("abc.OtherItem"))){ SchemaMapper.typeFrom("abc", "Other", schema, true, typePool) }
+        val schema = JsonSchema(type = JsonTypes(listOf("array")), items = JsonItems(listOf(JsonSchema(type = JsonTypes(listOf("object")), additionalProperties = AdditionalProperties(false), properties = JsonDefinitions(mapOf("a" to JsonSchema(type = JsonTypes(listOf("string")))))))))
+        expect(ParameterizedTypeName.get(List::class.asClassName(), ClassName.bestGuess("abc.OtherItem"))){ SchemaMapper(typePool).typeFrom("abc", "Other", schema, true) }
         expect(1){ typePool.count() }
         with(typePool[0]){
             expect("OtherItem"){ name }
@@ -159,16 +189,18 @@ class SchemaMapperTest{
         val typePool = mutableListOf<TypeSpec>()
         val schema = JsonSchema(
                 type = JsonTypes(listOf("object")),
+                additionalProperties = AdditionalProperties(false),
                 properties = JsonDefinitions(mapOf(
                         "a" to JsonSchema(
                                 type = JsonTypes(listOf("object")),
+                                additionalProperties = AdditionalProperties(false),
                                 properties = JsonDefinitions(mapOf(
                                         "b" to JsonSchema(
                                                 type = JsonTypes(listOf("string"))
                                         )))
                         )))
         )
-        expect(ClassName("abc","T")){ SchemaMapper.typeFrom("abc", "T", schema, true, typePool) }
+        expect(ClassName("abc","T")){ SchemaMapper(typePool).typeFrom("abc", "T", schema, true) }
         expect(2){ typePool.count() }
         with(typePool[0]){
             expect("A"){ name }
@@ -225,8 +257,8 @@ class SchemaMapperTest{
                 )
         )
 
-        val nameInfoType = SchemaMapper.typeFrom("","NameInfo", nameSchema, mutableListOf())!!
-        val objectType = SchemaMapper.typeFrom("", "ObjectInfo", objectSchema, mutableListOf(nameInfoType))
+        val nameInfoType = SchemaMapper().typeFrom("","NameInfo", nameSchema)!!
+        val objectType = SchemaMapper(mutableListOf(nameInfoType)).typeFrom("", "ObjectInfo", objectSchema)
         println(objectType)
     }
 }

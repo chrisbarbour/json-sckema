@@ -25,7 +25,8 @@ data class JsonSchema(
         val minLength: Int? = null,
         val pattern: String? = null,
         val required: List<String>? = null,
-        val additionalItems: Boolean = true,
+        val additionalItems: Boolean? = null,
+        @JsonDeserialize(using = AdditionalPropertiesDeserializer::class) val additionalProperties: AdditionalProperties = AdditionalProperties(),
         val uniqueItems: Boolean? = null,
         val multipleOf: BigDecimal? = null,
         val maximum: BigDecimal? = null,
@@ -38,20 +39,30 @@ data class JsonSchema(
         val allOf: List<JsonSchema>? = null,
         val anyOf: List<JsonSchema>? = null,
         val metadata: Map<String, String>? = null
-): JsonDefinition
+): JsonOrStringDefinition
 
 
-interface JsonDefinition
-data class JsonStringDefinition(val value: String = ""): JsonDefinition
-data class JsonDefinitions(val definitions: Map<String, JsonDefinition>)
+interface JsonOrStringDefinition
+data class AdditionalProperties(val include: Boolean = true, val type: JsonSchema? = null)
+data class JsonStringDefinition(val value: String = ""): JsonOrStringDefinition
+data class JsonDefinitions(val definitions: Map<String, JsonOrStringDefinition>)
 data class JsonTypes(val types: List<String>)
 data class JsonItems(val schemas: List<JsonSchema>)
+
+class AdditionalPropertiesDeserializer: JsonDeserializer<AdditionalProperties>(){
+    override fun deserialize(parser: JsonParser, context: DeserializationContext): AdditionalProperties {
+        val codec = parser.codec
+        val node: JsonNode = codec.readTree(parser)
+        return if(node.isBoolean) AdditionalProperties(node.booleanValue())
+        else AdditionalProperties(true, codec.treeToValue(node, JsonSchema::class.java))
+    }
+}
 
 class DefinitionsDeserializer: JsonDeserializer<JsonDefinitions>(){
     override fun deserialize(parser: JsonParser, context: DeserializationContext): JsonDefinitions {
         val codec = parser.codec
         val node: JsonNode = codec.readTree(parser)
-        val map = mutableMapOf<String, JsonDefinition>()
+        val map = mutableMapOf<String, JsonOrStringDefinition>()
         node.fieldNames().forEach {
             map[it] = when{
                 node[it].isTextual -> JsonStringDefinition(node[it].asText())

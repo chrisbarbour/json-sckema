@@ -1,5 +1,6 @@
 package sckema
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
@@ -17,7 +18,6 @@ import java.math.BigDecimal
 import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.LocalDateTime
-import kotlin.reflect.KClass
 
 // 0 - Location
 // 1 - Package
@@ -31,27 +31,35 @@ fun main(args: Array<String>){
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
 
     actualArgs.asList().subList(4, actualArgs.size).forEach {
-        SchemaMapper.map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[3]).map { it.writeTo(Paths.get(location)) }
+        SchemaMapper().map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[3]).map { it.writeTo(Paths.get(location)) }
     }
 }
 
-fun <T: Any> KClass<T>.resource(resource: String) = String(this.java.classLoader.getResourceAsStream(resource).readBytes())
-
-object SchemaMapper{
-
+data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableListOf()){
+    private val jackson = jacksonObjectMapper()
+    private val yamlJackson = ObjectMapper(YAMLFactory())
+    init {
+        val module = SimpleModule()
+        module.addDeserializer(JsonDefinitions::class.java, DefinitionsDeserializer())
+        module.addDeserializer(JsonTypes::class.java, TypesDeserializer())
+        module.addDeserializer(JsonItems::class.java, ItemsDeserializer())
+        module.addDeserializer(AdditionalProperties::class.java, AdditionalPropertiesDeserializer())
+        jackson.registerModule(module)
+        yamlJackson.registerModule(module)
+    }
     fun map(`package`: String, schemaString: String, yaml: Boolean = true, parent: String? = null): List<FileSpec>{
         val objectMapper = if(yaml) yamlJackson else jackson
         val jsonSchema: JsonSchema = objectMapper.readValue(schemaString)
-        return map(`package`, jsonSchema, mutableListOf(), parent) + ValidationSpec.validationHelpers(`package`)
+        return map(`package`, jsonSchema, parent) + ValidationSpec.validationHelpers(`package`)
     }
-
-    fun map(`package`: String, schema: JsonSchema, typePool: MutableList<TypeSpec>, parentName: String? = null): List<FileSpec>{
-        val parent = if(schema.properties != null) typeFrom(`package`, parentName!!, schema, typePool) else null
-        definitions(`package`, schema.definitions!!, typePool)
+    
+    fun map(`package`: String, schema: JsonSchema, parentName: String? = null): List<FileSpec>{
+        val parent = if(schema.properties != null) typeFrom(`package`, parentName!!, schema) else null
+        if(schema.definitions != null) definitions(`package`, schema.definitions)
         return (listOfNotNull(parent) + typePool).map { FileSpec.get(`package`,it) }
     }
 
-    fun nameFrom(name: String) = if(name.startsWith('$')) "`$name`" else name
+    private fun nameFrom(name: String) = if(name.startsWith('$')) "`$name`" else name
 
     private fun FunSpec.open(all: Boolean = false) = FunSpec.builder(name)
             .addParameters(parameters.map { if(all) it.open() else it })
@@ -90,20 +98,51 @@ object SchemaMapper{
             .addFunctions(funSpecs.map { if(it.name == "validate") it.open(false) else it })
             .build()
 
-    fun typeFrom(`package`: String, name: String, schema: JsonSchema, typePool: MutableList<TypeSpec>): TypeSpec?{
+    private fun additionalPropertyFor(`package`: String, name: String, additionalProperties: AdditionalProperties): PropertySpec? {
+        return if(additionalProperties.type == null){
+            if(additionalProperties.include){
+                PropertySpec.builder(
+                        name = "additionalProperties",
+                        type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())
+                ).initializer("additionalProperties").build()
+            } else null
+        } else {
+            PropertySpec.builder(
+                    name = "additionalProperties",
+                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), typeFrom(`package`, name, additionalProperties.type, true))
+            ).initializer("additionalProperties").build()
+        }
+    }
+    private fun additionalPropertyParameterFor(`package`: String, name: String, additionalProperties: AdditionalProperties): ParameterSpec? {
+        return if(additionalProperties.type == null){
+            if(additionalProperties.include){
+                ParameterSpec.builder(
+                    name = "additionalProperties",
+                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())
+                ).defaultValue("emptyMap()").build()
+            } else null
+        } else {
+            ParameterSpec.builder(
+                    name = "additionalProperties",
+                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), typeFrom(`package`, name, additionalProperties.type, true))
+            ).defaultValue("emptyMap()").build()
+        }
+    }
+
+    fun typeFrom(`package`: String, name: String, schema: JsonSchema): TypeSpec?{
         return if(schema.properties != null) {
             TypeSpec
-                .classBuilder(name).also {
-                    if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
-                }
-                .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), typePool))
-                .addProperties(
-                        schema.properties.definitions.map {
-                            propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key), typePool)
-                        } + metadataPropertiesFrom(schema)
-                )
-                .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
-                .build()
+                    .classBuilder(name).also {
+                        if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
+                    }
+                    .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), schema.additionalProperties))
+                    .addProperties(
+                            schema.properties.definitions.map {
+                                propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key))
+                            } + metadataPropertiesFrom(schema) + listOfNotNull(additionalPropertyFor(`package`, name, schema.additionalProperties))
+                    )
+                    .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
+                    .build()
         }
         else if(schema.allOf != null && schema.allOf.first().`$ref` != null){ //special case for extension
             val ref = schema.allOf.first().`$ref`!!.substring("#/definitions/".length)
@@ -111,38 +150,39 @@ object SchemaMapper{
             if(referenced != null){
                 typePool.remove(referenced)
                 typePool.add(referenced.open())
-                typeFromAllOf(`package`, name, schema.allOf, referenced, typePool)
+                typeFromAllOf(`package`, name, schema.allOf, referenced)
             }
             else null
         }
         else null
     }
 
-    fun metadataPropertiesFrom(schema: JsonSchema): List<PropertySpec>{
+    private fun metadataPropertiesFrom(schema: JsonSchema): List<PropertySpec>{
         return if(schema.metadata != null){
             schema.metadata.map {
-                PropertySpec.builder(it.key, String::class.asTypeName()).initializer("%S", it.value).build()
+                PropertySpec.builder(it.key, String::class.asTypeName()).addAnnotation(JsonIgnore::class).initializer("%S", it.value).build()
             }
         }
         else emptyList()
     }
 
-    fun typeFromAllOf(`package`: String, name: String, schemas: List<JsonSchema>, referenced: TypeSpec, typePool: MutableList<TypeSpec>): TypeSpec? {
+    private fun typeFromAllOf(`package`: String, name: String, schemas: List<JsonSchema>, referenced: TypeSpec): TypeSpec? {
         val properties = schemas[1].properties!!
         val required = schemas[1].required
+        val additionalProperties = schemas[1].additionalProperties
         return TypeSpec
                 .classBuilder(name)
                 .addModifiers(KModifier.DATA)
                 .primaryConstructor(
-                        constructorFor(`package`, properties, required.orEmpty(), typePool)
-                            .toBuilder()
-                            .addParameters(referenced.primaryConstructor!!.parameters.map { it.override()  })
-                            .build()
+                        constructorFor(`package`, properties, required.orEmpty(), additionalProperties)
+                                .toBuilder()
+                                .addParameters(referenced.primaryConstructor!!.parameters.map { it.override()  })
+                                .build()
                 )
                 .addProperties(
                         properties.definitions.map {
-                            propertyFrom(nameFrom(it.key),`package`, it.value, required.orEmpty().contains(it.key), typePool)
-                        } + referenced.propertySpecs.map { it.override() }
+                            propertyFrom(nameFrom(it.key),`package`, it.value, required.orEmpty().contains(it.key))
+                        } + referenced.propertySpecs.map { it.override() } + listOfNotNull(additionalPropertyFor(`package`, name, additionalProperties))
 
                 )
                 .also {
@@ -158,104 +198,98 @@ object SchemaMapper{
                 .build()
     }
 
-    fun definitions(`package`: String, definitions: JsonDefinitions, typePool: MutableList<TypeSpec>): List<TypeSpec>{
+    fun definitions(`package`: String, definitions: JsonDefinitions): List<TypeSpec>{
         return definitions.definitions
                 .filter { it.value is JsonSchema }
                 .map { it.key to it.value as JsonSchema }
                 .let {
                     it.filter { it.second.type?.types?.first() == "object" || it.second.allOf != null }
-                    .mapNotNull { typeFrom(`package`, it.first, it.second, typePool)?.also { typePool.add(it) } }
+                            .mapNotNull { typeFrom(`package`, it.first, it.second)?.also { typePool.add(it) } }
                 }
     }
 
 
-    fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>, typePool: MutableList<TypeSpec>): FunSpec{
+    private fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>, additionalProperties: AdditionalProperties): FunSpec{
         return definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
             acc, definition ->
             val isRequired = required.contains(definition.first)
-            val parameter = ParameterSpec.builder(nameFrom(definition.first),typeFrom(`package`, definition.first, definition.second, isRequired, typePool))
-            var defaultValue = ""
+            val parameter = ParameterSpec.builder(nameFrom(definition.first),typeFrom(`package`, definition.first, definition.second, isRequired))
+            var defaultValue = CodeBlock.of("")
             if(definition.second is JsonSchema){
                 val def = definition.second as JsonSchema
                 if(def.default != null){
                     val type = def.type?.types?.get(0)
                     when(type){
-                        "string" -> defaultValue = "\"${def.default}\""
+                        "string" -> defaultValue = CodeBlock.of("\"${def.default}\"")
+                        "number" -> defaultValue = CodeBlock.of("%T(${def.default})", BigDecimal::class)
                     }
                 }
             }
-            if(!isRequired && defaultValue.isEmpty()) defaultValue = "null"
+            if(!isRequired && defaultValue.isEmpty()) defaultValue = CodeBlock.of("null")
             if(defaultValue.isNotEmpty()) parameter.defaultValue(defaultValue)
             acc.addParameter(parameter.build())
+        }.also {
+            val param = additionalPropertyParameterFor(`package`, "", additionalProperties)
+            if(param != null) it.addParameter(param)
         }.build()
     }
 
-    fun propertyFrom(name: String, `package`: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): PropertySpec{
-        return PropertySpec.builder(name,typeFrom(`package`, name, definition, required, typePool))
+    fun propertyFrom(name: String, `package`: String, definition: JsonOrStringDefinition, required: Boolean): PropertySpec{
+        return PropertySpec.builder(name,typeFrom(`package`, name, definition, required))
                 .addAnnotations(annotationsFrom(definition))
                 .initializer(name).build()
     }
 
-    fun annotationsFrom(definition: JsonDefinition) =
+    private fun annotationsFrom(definition: JsonOrStringDefinition) =
             if(definition is JsonSchema) {
-            when (definition.format) {
-                "date" -> listOf(
-                        AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateDeserializer::class.java).build(),
-                        AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateSerializer::class.java).build()
-                )
-                "date-time" -> listOf(
-                        AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateTimeDeserializer::class.java).build(),
-                        AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateTimeSerializer::class.java).build()
-                )
-                else -> emptyList()
+                when (definition.format) {
+                    "date" -> listOf(
+                            AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateDeserializer::class.java).build(),
+                            AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateSerializer::class.java).build()
+                    )
+                    "date-time" -> listOf(
+                            AnnotationSpec.builder(JsonDeserialize::class.java).addMember("using = %T::class", LocalDateTimeDeserializer::class.java).build(),
+                            AnnotationSpec.builder(JsonSerialize::class.java).addMember("using = %T::class", LocalDateTimeSerializer::class.java).build()
+                    )
+                    else -> emptyList()
+                }
             }
-        }
-        else throw IllegalArgumentException()
+            else throw IllegalArgumentException()
 
     private fun String.capitalizeFirst() = this[0].toUpperCase() + this.substring(1)
 
-    fun typeFrom(`package`: String, parentName: String, definition: JsonDefinition, required: Boolean, typePool: MutableList<TypeSpec>): TypeName{
-        if(definition is JsonSchema) {
-            val typeName = if(definition.`$ref` != null){
-                ClassName(`package`, definition.`$ref`.substring("#/definitions/".length))
+    private fun simpleTypeNameFor(`package`: String, parentName: String, definition: JsonSchema) = when (definition.type?.types?.first()) { // only handling simple types here
+        "string" -> {
+            when (definition.format) {
+                "date" -> LocalDate::class.asTypeName()
+                "date-time" -> LocalDateTime::class.asTypeName()
+                else -> String::class.asTypeName()
             }
-            else if(definition.type == null) Any::class.asTypeName()
-            else {
-                when (definition.type.types.first()) { // only handling simple types here
-                    "string" -> {
-                        when (definition.format) {
-                            "date" -> LocalDate::class.asTypeName()
-                            "date-time" -> LocalDateTime::class.asTypeName()
-                            else -> String::class.asTypeName()
-                        }
-                    }
-                    "number" -> BigDecimal::class.asTypeName()
-                    "integer" -> Int::class.asTypeName()
-                    "boolean" -> Boolean::class.asTypeName()
-                    "object" -> {
-                        when{
-                            definition.properties != null -> typeFrom(`package`, parentName.capitalizeFirst(), definition, typePool).let { if(!typePool.contains(it))typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
-                            else -> Any::class.asTypeName()
-                        }
-                    }
-                    "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`,parentName+"Item",definition.items!!.schemas.firstOrNull() ?: JsonSchema(), true, typePool))
-                    else -> Any::class.asTypeName()
-                }
+        }
+        "number" -> BigDecimal::class.asTypeName()
+        "integer" -> Int::class.asTypeName()
+        "boolean" -> Boolean::class.asTypeName()
+        "object" -> {
+            when {
+                definition.properties != null -> typeFrom(`package`, parentName.capitalizeFirst(), definition).let { if (!typePool.contains(it)) typePool.add(it!!); ClassName(`package`, parentName.capitalizeFirst()) }
+                else -> Any::class.asTypeName()
+            }
+        }
+        "array" -> ParameterizedTypeName.get(List::class.asClassName(), typeFrom(`package`, parentName + "Item", definition.items!!.schemas.firstOrNull()
+                ?: JsonSchema(), true))
+        else -> Any::class.asTypeName()
+    }
+
+    fun typeFrom(`package`: String, parentName: String, definition: JsonOrStringDefinition, required: Boolean): TypeName{
+        if(definition is JsonSchema) {
+            val typeName = when {
+                definition.`$ref` != null -> ClassName(`package`, definition.`$ref`.substring("#/definitions/".length))
+                definition.type == null -> Any::class.asTypeName()
+                else -> simpleTypeNameFor(`package`, parentName, definition)
             }
             return if(required) typeName
             else typeName.asNullable()
         }
-        throw IllegalArgumentException()
-    }
-
-    private val jackson = jacksonObjectMapper()
-    private val yamlJackson = ObjectMapper(YAMLFactory())
-    init {
-        val module = SimpleModule()
-        module.addDeserializer(JsonDefinitions::class.java, DefinitionsDeserializer())
-        module.addDeserializer(JsonTypes::class.java, TypesDeserializer())
-        module.addDeserializer(JsonItems::class.java, ItemsDeserializer())
-        jackson.registerModule(module)
-        yamlJackson.registerModule(module)
+        throw IllegalArgumentException("Definition is not a Schema")
     }
 }

@@ -35,7 +35,7 @@ private fun JsonSchema.generateWithDefaults(definitions: JsonDefinitions): JsonN
     }
 }
 
-private fun JsonDefinition.hasDefaults(definitions: JsonDefinitions, refInfo: MutableMap<String, Boolean>): Boolean = when(this){
+private fun JsonOrStringDefinition.hasDefaults(definitions: JsonDefinitions, refInfo: MutableMap<String, Boolean>): Boolean = when(this){
     is JsonSchema -> {
         when(type?.types.orEmpty().firstOrNull()){
             "object" -> this.properties?.definitions.orEmpty().any { it.value.hasDefaults(definitions, refInfo) }

@@ -34,3 +34,15 @@ definitions:
       abc: { type: string, maxLength: 5}
       def: { type: number, exclusiveMaximum: 25 }
     required: ["abc"]
+    additionalProperties: false
+
+  Example2:
+    allOf:
+      - { $ref: "#/definitions/Example"}
+      -
+        type: object
+        description: "An Example2"
+        properties:
+          ghi: { type: string, maxLength: 5}
+          jkl: { type: number, exclusiveMaximum: 25 }
+        required: ["abc"]

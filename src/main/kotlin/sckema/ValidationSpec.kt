@@ -53,10 +53,10 @@ object ValidationSpec{
 
     private fun numberValidation(name: String, required: Boolean, schema: JsonSchema): List<CodeBlock>{
         return listOfNotNull(
-                if(schema.minimum != null)CodeBlock.of("  this.$name${if(required) "" else "?"}.let{ if( it <= ${schema.minimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMin(${schema.minimum}))) else null }") else null,
-                if(schema.exclusiveMinimum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMinimum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMin(${schema.exclusiveMinimum}))) else null }") else null,
-                if(schema.maximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it >= ${schema.maximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMax(${schema.maximum}))) else null }") else null,
-                if(schema.exclusiveMaximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < ${schema.exclusiveMaximum} ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMax(${schema.exclusiveMaximum}))) else null }") else null
+                if(schema.minimum != null)CodeBlock.of("  this.$name${if(required) "" else "?"}.let{ if( it <= %T(${schema.minimum}) ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMin(%T(${schema.minimum})))) else null }", BigDecimal::class, BigDecimal::class) else null,
+                if(schema.exclusiveMinimum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < %T(${schema.exclusiveMinimum}) ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMin(%T(${schema.exclusiveMinimum})))) else null }", BigDecimal::class, BigDecimal::class) else null,
+                if(schema.maximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it >= %T(${schema.maximum}) ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberMax(%T(${schema.maximum})))) else null }", BigDecimal::class, BigDecimal::class) else null,
+                if(schema.exclusiveMaximum != null)CodeBlock.of("   this.$name${if(required) "" else "?"}.let{ if( it < %T(${schema.exclusiveMaximum}) ) listOf(ValidationError(\"$name\", ValidationReason.NUMBER_LIMIT, ValidationError.messageForNumberExclusiveMax(%T(${schema.exclusiveMaximum})))) else null }", BigDecimal::class, BigDecimal::class) else null
         )
     }
 
