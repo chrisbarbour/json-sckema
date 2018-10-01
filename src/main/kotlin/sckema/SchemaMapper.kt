@@ -1,5 +1,7 @@
 package sckema
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter
+import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
@@ -95,39 +97,63 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 superclassConstructorParameters.forEach { type.addSuperclassConstructorParameter(it) }
             }
             .addProperties(propertySpecs.map { it.open() })
-            .addFunctions(funSpecs.map { if(it.name == "validate") it.open(false) else it })
+            .addFunctions(funSpecs.filter { it.name != "copy" && it.name != "merge"}.map { if(it.name == "validate") it.open(false) else it })
+            .addFunction(
+                    FunSpec.builder("copy")
+                            .addParameters(
+                                    propertySpecs.map {
+                                        ParameterSpec.builder(it.name, it.type.asNullable())
+                                                .defaultValue("null")
+                                                .build()
+                                    }
+                            )
+                            .addCode(
+                                    propertySpecs.foldIndexed("return ${name!!}(\n"){
+                                        index, code, property -> code + (if(index != 0) ", " else "" ) +"${property.name} = ${property.name} ?: this.${property.name}\n"
+                                    } + ")\n"
+                            )
+                            .returns(ClassName.bestGuess(name!!))
+                            .build()
+            )
+            .addFunction(
+                    FunSpec.builder("merge")
+                            .addParameter("other",ClassName.bestGuess(name!!))
+                            .addCode(
+                                    propertySpecs.filter { it.type.nullable }.foldIndexed("return copy(\n"){
+                                        index, code, property -> code + (if(index != 0) ", " else "" ) +"${property.name} = ${property.name} ?: other.${property.name}\n"
+                                    } + ")\n"
+                            )
+                            .returns(ClassName.bestGuess(name!!))
+                            .build()
+            )
             .build()
 
-    private fun additionalPropertyFor(`package`: String, name: String, additionalProperties: AdditionalProperties): PropertySpec? {
-        return if(additionalProperties.type == null){
-            if(additionalProperties.include){
+    private fun additionalPropertyFor(`package`: String, name: String, additionalProperties: AdditionalProperties) =
+            if(additionalProperties.include) {
+                val type = if(additionalProperties.type != null) typeFrom(`package`, name, additionalProperties.type, true)
+                    else Any::class.asTypeName()
                 PropertySpec.builder(
                         name = "additionalProperties",
-                        type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())
-                ).initializer("additionalProperties").build()
+                        type = ParameterizedTypeName.get(HashMap::class.asClassName(), String::class.asTypeName(), type.asNullable())
+                ).initializer("HashMap()").build()
             } else null
-        } else {
-            PropertySpec.builder(
-                    name = "additionalProperties",
-                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), typeFrom(`package`, name, additionalProperties.type, true))
-            ).initializer("additionalProperties").build()
-        }
-    }
-    private fun additionalPropertyParameterFor(`package`: String, name: String, additionalProperties: AdditionalProperties): ParameterSpec? {
-        return if(additionalProperties.type == null){
+
+    private fun additionalPropertyFunctionsFor(`package`: String, name: String, additionalProperties: AdditionalProperties) =
             if(additionalProperties.include){
-                ParameterSpec.builder(
-                    name = "additionalProperties",
-                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())
-                ).defaultValue("emptyMap()").build()
-            } else null
-        } else {
-            ParameterSpec.builder(
-                    name = "additionalProperties",
-                    type = ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), typeFrom(`package`, name, additionalProperties.type, true))
-            ).defaultValue("emptyMap()").build()
-        }
-    }
+                val type = (if(additionalProperties.type != null) typeFrom(`package`, name, additionalProperties.type, true)
+                else Any::class.asTypeName()).asNullable()
+                listOf(
+                        FunSpec.builder("set").addAnnotation(JsonAnySetter::class)
+                                .addParameter("name", String::class)
+                                .addParameter("value", type)
+                                .addCode("additionalProperties[name] = value\n")
+                                .build(),
+                        FunSpec.builder("additionalProperties").addAnnotation(JsonAnyGetter::class)
+                                .returns(type)
+                                .addCode("return additionalProperties\n")
+                                .build()
+                )
+            } else emptyList()
 
     fun typeFrom(`package`: String, name: String, schema: JsonSchema): TypeSpec?{
         return if(schema.properties != null) {
@@ -135,12 +161,13 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                     .classBuilder(name).also {
                         if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
                     }
-                    .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty(), schema.additionalProperties))
+                    .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty()))
                     .addProperties(
                             schema.properties.definitions.map {
                                 propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key))
                             } + metadataPropertiesFrom(schema) + listOfNotNull(additionalPropertyFor(`package`, name, schema.additionalProperties))
                     )
+                    .addFunctions(additionalPropertyFunctionsFor(`package`, name, schema.additionalProperties))
                     .addFunction(ValidationSpec.validationForObject(`package`, schema)!!)
                     .build()
         }
@@ -174,7 +201,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 .classBuilder(name)
                 .addModifiers(KModifier.DATA)
                 .primaryConstructor(
-                        constructorFor(`package`, properties, required.orEmpty(), additionalProperties)
+                        constructorFor(`package`, properties, required.orEmpty())
                                 .toBuilder()
                                 .addParameters(referenced.primaryConstructor!!.parameters.map { it.override()  })
                                 .build()
@@ -185,6 +212,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                         } + referenced.propertySpecs.map { it.override() } + listOfNotNull(additionalPropertyFor(`package`, name, additionalProperties))
 
                 )
+                .addFunctions(additionalPropertyFunctionsFor(`package`, name, additionalProperties))
                 .also {
                     val validate = ValidationSpec.validationForObject(`package`, schemas[1], true)
                     if(validate != null) it.addFunction(validate)
@@ -209,7 +237,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
     }
 
 
-    private fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>, additionalProperties: AdditionalProperties): FunSpec{
+    private fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>): FunSpec{
         return definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
             acc, definition ->
             val isRequired = required.contains(definition.first)
@@ -228,9 +256,6 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
             if(!isRequired && defaultValue.isEmpty()) defaultValue = CodeBlock.of("null")
             if(defaultValue.isNotEmpty()) parameter.defaultValue(defaultValue)
             acc.addParameter(parameter.build())
-        }.also {
-            val param = additionalPropertyParameterFor(`package`, "", additionalProperties)
-            if(param != null) it.addParameter(param)
         }.build()
     }
 

@@ -31,14 +31,13 @@ class SchemaMapperTest{
             with(get(0)){ expect("B"){ name } }
             with(get(1)){
                 expect("additionalProperties"){ name }
-                expect("additionalProperties"){ initializer.toString() }
-                expect(ParameterizedTypeName.get(Map::class.asTypeName(), String::class.asTypeName(), Any::class.asTypeName())){ type }
+                expect("HashMap()"){ initializer.toString() }
+                expect(ParameterizedTypeName.get(HashMap::class.asClassName(), String::class.asTypeName(), Any::class.asTypeName().asNullable())){ type }
             }
         }
         with(typeSpec.primaryConstructor!!){
-            expect(2){ parameters.size }
+            expect(1){ parameters.size }
             expect("B") { parameters[0].name }
-            expect("additionalProperties"){ parameters[1].name }
         }
     }
 
