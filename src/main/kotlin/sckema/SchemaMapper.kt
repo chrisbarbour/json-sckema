@@ -134,7 +134,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                     else Any::class.asTypeName()
                 PropertySpec.builder(
                         name = "additionalProperties",
-                        type = ParameterizedTypeName.get(HashMap::class.asClassName(), String::class.asTypeName(), type.asNullable())
+                        type = ParameterizedTypeName.get(java.util.HashMap::class.asClassName(), String::class.asTypeName(), type.asNullable())
                 ).initializer("HashMap()").build()
             } else null
 
@@ -149,7 +149,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                                 .addCode("additionalProperties[name] = value\n")
                                 .build(),
                         FunSpec.builder("additionalProperties").addAnnotation(JsonAnyGetter::class)
-                                .returns(type)
+                                .returns(ParameterizedTypeName.get(java.util.HashMap::class.asClassName(), String::class.asTypeName(), type.asNullable()))
                                 .addCode("return additionalProperties\n")
                                 .build()
                 )
