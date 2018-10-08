@@ -12,11 +12,11 @@ import kotlin.test.expect
 
 class SchemaMapperTest{
 
-    @Test
-    fun go(){
-        val text = SchemaMapperTest::class.java.classLoader.getResourceAsStream("swagger-test.yml").bufferedReader().readText()
-        SchemaMapper().map("test", text, yaml = true, parent = "Policy").map { it.writeTo(Paths.get("/Users/n0237573/Code/titan/json-sckema/target/generated-sources")) }
-    }
+//    @Test
+//    fun go(){
+//        val text = SchemaMapperTest::class.java.classLoader.getResourceAsStream("swagger-test.yml").bufferedReader().readText()
+//        SchemaMapper().map("test", text, yaml = true, parent = "Policy").map { it.writeTo(Paths.get("/Users/n0237573/Code/titan/json-sckema/target/generated-sources")) }
+//    }
 
     @Test
     fun `should include additionalProperties of type Map -String Any- by default`(){
