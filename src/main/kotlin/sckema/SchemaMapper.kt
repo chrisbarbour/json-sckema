@@ -248,8 +248,10 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 if(def.default != null){
                     val type = def.type?.types?.get(0)
                     when(type){
-                        "string" -> defaultValue = CodeBlock.of("\"${def.default}\"")
+                        "string" -> defaultValue = CodeBlock.of("%S", def.default)
                         "number" -> defaultValue = CodeBlock.of("%T(${def.default})", BigDecimal::class)
+                        "integer" -> defaultValue = CodeBlock.of("${def.default}")
+                        "boolean" -> defaultValue = CodeBlock.of("${def.default}")
                     }
                 }
             }
