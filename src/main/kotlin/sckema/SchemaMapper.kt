@@ -135,7 +135,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 PropertySpec.builder(
                         name = "additionalProperties",
                         type = ParameterizedTypeName.get(java.util.HashMap::class.asClassName(), String::class.asTypeName(), type.asNullable())
-                ).initializer("HashMap()").build()
+                ).addAnnotation(JsonIgnore::class).initializer("HashMap()").build()
             } else null
 
     private fun additionalPropertyFunctionsFor(`package`: String, name: String, additionalProperties: AdditionalProperties) =
@@ -156,14 +156,15 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
             } else emptyList()
 
     fun typeFrom(`package`: String, name: String, schema: JsonSchema): TypeSpec?{
-        return if(schema.properties != null) {
+        return if(schema.properties != null || schema.additionalProperties.include) {
+            val propertyDefinitions = schema.properties?: JsonDefinitions(emptyMap())
             TypeSpec
                     .classBuilder(name).also {
-                        if(schema.properties.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
+                        if(propertyDefinitions.definitions.isNotEmpty()) it.addModifiers(KModifier.DATA)
                     }
-                    .primaryConstructor(constructorFor(`package`, schema.properties, schema.required.orEmpty()))
+                    .primaryConstructor(constructorFor(`package`, propertyDefinitions, schema.required.orEmpty()))
                     .addProperties(
-                            schema.properties.definitions.map {
+                            propertyDefinitions.definitions.map {
                                 propertyFrom(nameFrom(it.key),`package`, it.value, schema.required.orEmpty().contains(it.key))
                             } + metadataPropertiesFrom(schema) + listOfNotNull(additionalPropertyFor(`package`, name, schema.additionalProperties))
                     )

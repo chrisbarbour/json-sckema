@@ -8,7 +8,7 @@ object ValidationSpec{
 
     fun validationForObject(`package`: String, schema: JsonSchema, override: Boolean = false): FunSpec?{
         val requiredList = schema.required.orEmpty()
-        val validations = (schema.properties as JsonDefinitions).definitions
+        val validations = (schema.properties?.definitions ?: emptyMap())
                 .map { it.key to it.value as JsonSchema }
                 .flatMap {
                     val required = requiredList.contains(it.first)
