@@ -194,6 +194,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
         else emptyList()
     }
 
+
     private fun typeFromAllOf(`package`: String, name: String, schemas: List<JsonSchema>, referenced: TypeSpec): TypeSpec? {
         val properties = schemas[1].properties!!
         val required = schemas[1].required
@@ -202,15 +203,17 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 .classBuilder(name)
                 .addModifiers(KModifier.DATA)
                 .primaryConstructor(
-                        constructorFor(`package`, properties, required.orEmpty())
+                        constructorFor(`package`, properties, required.orEmpty(),referenced.propertySpecs.map { it.name })
                                 .toBuilder()
-                                .addParameters(referenced.primaryConstructor!!.parameters.map { it.override()  })
+                                .addParameters(referenced.primaryConstructor!!.parameters.filter { !properties.definitions.keys.contains(it.name) }.map { it.override()  })
                                 .build()
                 )
                 .addProperties(
                         properties.definitions.map {
-                            propertyFrom(nameFrom(it.key),`package`, it.value, required.orEmpty().contains(it.key))
-                        } + referenced.propertySpecs.map { it.override() } + listOfNotNull(additionalPropertyFor(`package`, name, additionalProperties))
+                            propertyFrom(nameFrom(it.key),`package`, it.value, required.orEmpty().contains(it.key),referenced.propertySpecs.map { it.name })
+                        } + referenced.propertySpecs.filter { !properties.definitions.keys.contains(it.name) }
+                                .map { it.override() } +
+                                listOfNotNull(additionalPropertyFor(`package`, name, additionalProperties))
 
                 )
                 .addFunctions(additionalPropertyFunctionsFor(`package`, name, additionalProperties))
@@ -238,8 +241,8 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
     }
 
 
-    private fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>): FunSpec{
-        return definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
+    private fun constructorFor(`package`: String, definitions: JsonDefinitions, required: List<String>, overrideProperties: List<String> = emptyList()): FunSpec{
+        val c = definitions.definitions.toList().fold(FunSpec.constructorBuilder()){
             acc, definition ->
             val isRequired = required.contains(definition.first)
             val parameter = ParameterSpec.builder(nameFrom(definition.first),typeFrom(`package`, definition.first, definition.second, isRequired))
@@ -258,13 +261,18 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
             }
             if(!isRequired && defaultValue.isEmpty()) defaultValue = CodeBlock.of("null")
             if(defaultValue.isNotEmpty()) parameter.defaultValue(defaultValue)
-            acc.addParameter(parameter.build())
+            acc.addParameter(parameter.build().let {
+                if(overrideProperties.contains(it.name))
+                    it.override()
+                else it })
         }.build()
+        return c
     }
 
-    fun propertyFrom(name: String, `package`: String, definition: JsonOrStringDefinition, required: Boolean): PropertySpec{
+    fun propertyFrom(name: String, `package`: String, definition: JsonOrStringDefinition, required: Boolean, overrideProperties: List<String> = emptyList()): PropertySpec{
         return PropertySpec.builder(name,typeFrom(`package`, name, definition, required))
                 .addAnnotations(annotationsFrom(definition))
+                .apply { if(overrideProperties.contains(name)) addModifiers(KModifier.OVERRIDE) }
                 .initializer(name).build()
     }
 
