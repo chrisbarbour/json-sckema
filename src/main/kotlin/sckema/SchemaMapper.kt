@@ -3,10 +3,13 @@ package sckema
 import com.fasterxml.jackson.annotation.JsonAnyGetter
 import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
 import com.fasterxml.jackson.databind.module.SimpleModule
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer
@@ -31,9 +34,9 @@ fun main(args: Array<String>){
     val location = actualArgs[0]
     File(location).mkdir()
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
-
-    actualArgs.asList().subList(4, actualArgs.size).forEach {
-        SchemaMapper().map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[3]).map { it.writeTo(Paths.get(location)) }
+    val openApi = with(actualArgs[3]){ this == "openapi"}
+    actualArgs.asList().subList(5, actualArgs.size).forEach {
+        SchemaMapper().map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[4], openApi = openApi).map { it.writeTo(Paths.get(location)) }
     }
 }
 
@@ -49,9 +52,17 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
         jackson.registerModule(module)
         yamlJackson.registerModule(module)
     }
-    fun map(`package`: String, schemaString: String, yaml: Boolean = true, parent: String? = null): List<FileSpec>{
+    fun map(`package`: String, schemaString: String, yaml: Boolean = true, parent: String? = null, openApi: Boolean = false): List<FileSpec>{
         val objectMapper = if(yaml) yamlJackson else jackson
-        val jsonSchema: JsonSchema = objectMapper.readValue(schemaString)
+        val jsonSchema: JsonSchema = if(openApi){
+            val definition = objectMapper.readValue<JsonNode>(schemaString)
+            val schemas = definition["components"]["schemas"]
+            val newSchema = JsonNodeFactory.instance.objectNode().also {
+                it["definitions"] = schemas
+            }
+            val definitionsString = objectMapper.writeValueAsString(newSchema).replace("#/components/schemas/", "#/definitions/")
+            objectMapper.readValue(definitionsString)
+        } else objectMapper.readValue(schemaString)
         return map(`package`, jsonSchema, parent) + ValidationSpec.validationHelpers(`package`)
     }
     
