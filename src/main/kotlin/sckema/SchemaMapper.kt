@@ -20,6 +20,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.squareup.kotlinpoet.*
 import java.io.File
 import java.math.BigDecimal
+import java.net.URL
 import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -36,7 +37,8 @@ fun main(args: Array<String>){
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
     val openApi = with(actualArgs[3]){ this == "openapi"}
     actualArgs.asList().subList(5, actualArgs.size).forEach {
-        SchemaMapper().map(actualArgs[1], File(it).readText(), yaml = yaml, parent = actualArgs[4], openApi = openApi).map { it.writeTo(Paths.get(location)) }
+        val text = if(it.startsWith("http")) URL(it).readText() else File(it).readText()
+        SchemaMapper().map(actualArgs[1], text, yaml = yaml, parent = actualArgs[4], openApi = openApi).map { it.writeTo(Paths.get(location)) }
     }
 }
 
