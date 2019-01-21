@@ -110,9 +110,9 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                 superclassConstructorParameters.forEach { type.addSuperclassConstructorParameter(it) }
             }
             .addProperties(propertySpecs.map { it.open() })
-            .addFunctions(funSpecs.filter { it.name != "copy" && it.name != "merge"}.map { if(it.name == "validate") it.open(false) else it })
+            .addFunctions(funSpecs.filter { it.name != "copy${name!!.capitalize()}" && it.name != "merge"}.map { if(it.name == "validate") it.open(false) else it })
             .addFunction(
-                    FunSpec.builder("copy")
+                    FunSpec.builder("copy${name!!.capitalize()}")
                             .addParameters(
                                     propertySpecs.map {
                                         ParameterSpec.builder(it.name, it.type.asNullable())
@@ -132,7 +132,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
                     FunSpec.builder("merge")
                             .addParameter("other",ClassName.bestGuess(name!!))
                             .addCode(
-                                    propertySpecs.filter { it.type.nullable }.foldIndexed("return copy(\n"){
+                                    propertySpecs.filter { it.type.nullable }.foldIndexed("return copy${name!!.capitalize()}(\n"){
                                         index, code, property -> code + (if(index != 0) ", " else "" ) +"${property.name} = ${property.name} ?: other.${property.name}\n"
                                     } + ")\n"
                             )
