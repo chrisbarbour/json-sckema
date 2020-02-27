@@ -3,7 +3,6 @@ package sckema
 import com.fasterxml.jackson.annotation.JsonAnyGetter
 import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
@@ -17,7 +16,19 @@ import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.ParameterizedTypeName
+import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeName
+import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.asClassName
+import com.squareup.kotlinpoet.asTypeName
 import java.io.File
 import java.math.BigDecimal
 import java.net.URL
@@ -31,14 +42,33 @@ import java.time.LocalDateTime
 // 3... - Schema Resources
 fun main(args: Array<String>){
     val actualArgs = if(args.isEmpty()) arrayOf("${System.getProperty("user.dir")}/target/generated-sources", "sckema","yaml", "${System.getProperty("user.dir")}/src/main/resources/swagger-test.yml") else args
-    actualArgs.map { println(it) }
     val location = actualArgs[0]
     File(location).mkdir()
     val yaml = with(actualArgs[2]){ this == "yaml" || this == "yml"}
     val openApi = with(actualArgs[3]){ this == "openapi"}
+
+    fun mapMany(`package`: String, directory: File) {
+        val result = mutableListOf<FileSpec>()
+        var file: File
+        directory.list()?.forEach {
+            file = File("${directory}/${it}")
+            if (file.isDirectory) {
+                mapMany(`package`, file)
+            }
+            else if (file.isFile) {
+                result.addAll(SchemaMapper().map(`package` = `package`, schemaString = file.readText(), parent = it.substringBeforeLast("."), yaml = yaml, openApi = openApi))
+            }
+        }
+    }
+
     actualArgs.asList().subList(5, actualArgs.size).forEach {
-        val text = if(it.startsWith("http")) URL(it).readText() else File(it).readText()
-        SchemaMapper().map(actualArgs[1], text, yaml = yaml, parent = actualArgs[4], openApi = openApi).map { it.writeTo(Paths.get(location)) }
+        val file = File(it)
+        if (file.isDirectory) {
+            mapMany(actualArgs[1], file)
+        } else {
+            val text = if (it.startsWith("http")) URL(it).readText() else file.readText()
+            SchemaMapper().map(actualArgs[1], text, yaml = yaml, parent = actualArgs[4], openApi = openApi).map { it.writeTo(Paths.get(location)) }
+        }
     }
 }
 
@@ -67,7 +97,7 @@ data class SchemaMapper(private val typePool: MutableList<TypeSpec> = mutableLis
         } else objectMapper.readValue(schemaString)
         return map(`package`, jsonSchema, parent) + ValidationSpec.validationHelpers(`package`)
     }
-    
+
     fun map(`package`: String, schema: JsonSchema, parentName: String? = null): List<FileSpec>{
         val parent = if(schema.properties != null) typeFrom(`package`, parentName!!, schema) else null
         if(schema.definitions != null) definitions(`package`, schema.definitions)
